@@ -21,7 +21,7 @@ export const ACCEPT = Object.values(IMPORT_FORMATS)
   .flatMap((f) => f.extensions.map((e) => `.${e}`))
   .join(',')
 
-export const MAX_FILE_BYTES = 2000 * 1024 * 1024
+export const MAX_FILE_BYTES = 500 * 1024 * 1024
 
 export type ImportResult = {
   format: ImportFormat

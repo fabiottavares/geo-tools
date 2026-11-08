@@ -7,6 +7,7 @@ import type { Feature } from 'geojson'
 import ExportModal from './ExportModal'
 import ImportModal from './ImportModal'
 import { CitiesLayer } from './CitiesLayer'
+import ColorButton from './ColorButton'
 
 type ActionProps = {
   label: string
@@ -15,7 +16,6 @@ type ActionProps = {
   children: ReactNode
 }
 
-// Botão no mesmo padrão do zoom (.leaflet-bar a)
 function BarButton({ label, disabled, onClick, children }: ActionProps) {
   const handle = (e: MouseEvent) => {
     e.preventDefault()
@@ -52,18 +52,14 @@ const icon = (d: string) => (
 )
 
 const TRAY = 'M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2'
-const TRASH = 'M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 001 1h8a1 1 0 001-1l1-12M9 7V4h6v3'
 
-// Controle do Leaflet adicionado no canto superior esquerdo, logo abaixo do zoom
 function MapActions({
   onImport,
   onExport,
-  onClear,
   empty,
 }: {
   onImport: () => void
   onExport: () => void
-  onClear: () => void
   empty: boolean
 }) {
   const map = useMap()
@@ -95,9 +91,6 @@ function MapActions({
       <BarButton label="Exportar" disabled={empty} onClick={onExport}>
         {icon(`M12 3v12m0 0l-4-4m4 4l4-4M${TRAY.slice(1)}`)}
       </BarButton>
-      <BarButton label="Limpar mapa" disabled={empty} onClick={onClear}>
-        {icon(TRASH)}
-      </BarButton>
     </>,
     container,
   )
@@ -109,16 +102,118 @@ export default function MapView() {
   const [polygons, setPolygons] = useState<Feature[]>([])
   const [exportOpen, setExportOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const selectedRef = useRef<L.Path | null>(null)
+  const [hasSelection, setHasSelection] = useState(false)
+  const [color, setColor] = useState('#3388ff')
+
+  const colorRef = useRef('#3388ff')
+  const exportModeRef = useRef(false)
+  const exportSelRef = useRef<Map<L.Path, { weight?: number; fillOpacity?: number }>>(new Map())
+  const [exportMode, setExportMode] = useState(false)
+  const [exportCount, setExportCount] = useState(0)
+  const [toExport, setToExport] = useState<Feature[]>([])
+
+  const markForExport = (layer: L.Path) => {
+    exportSelRef.current.set(layer, {
+      weight: layer.options.weight,
+      fillOpacity: layer.options.fillOpacity,
+    })
+    layer.setStyle({ weight: 6, fillOpacity: 0.5 })
+  }
+
+  const unmarkForExport = (layer: L.Path) => {
+    const original = exportSelRef.current.get(layer)
+    if (original) layer.setStyle(original)
+    exportSelRef.current.delete(layer)
+  }
+
+  const clearExportSelection = () => {
+    exportSelRef.current.forEach((original, layer) => layer.setStyle(original))
+    exportSelRef.current.clear()
+    setExportCount(0)
+  }
+
+  const startExport = () => {
+    clearExportSelection()
+    exportModeRef.current = true
+    setExportMode(true)
+  }
+
+  const cancelExport = () => {
+    clearExportSelection()
+    exportModeRef.current = false
+    setExportMode(false)
+  }
+
+  const toggleExport = (layer: L.Path) => {
+    if (exportSelRef.current.has(layer)) unmarkForExport(layer)
+    else markForExport(layer)
+    setExportCount(exportSelRef.current.size)
+  }
+
+  const toggleAllExport = () => {
+    const layers = (groupRef.current?.getLayers() ?? []) as L.Path[]
+    const allMarked = layers.every((l) => exportSelRef.current.has(l))
+    layers.forEach((l) => (allMarked ? unmarkForExport(l) : exportSelRef.current.has(l) || markForExport(l)))
+    setExportCount(exportSelRef.current.size)
+  }
+
+  const confirmExport = () => {
+    const features = Array.from(exportSelRef.current.keys()).map(
+      (l) => (l as L.Polygon).toGeoJSON() as Feature,
+    )
+    cancelExport()
+    setToExport(features)
+    setExportOpen(true)
+  }
+
+  // um único handler de clique: no modo exportação marca, fora dele muda a cor
+  const handleGroupClick = (e: L.LeafletEvent) => {
+    if (!exportModeRef.current) return selectLayer(e)
+    const layer = (e as L.LeafletEvent & { layer: L.Path }).layer
+    if (layer?.setStyle) toggleExport(layer)
+  }
+
+  const selectLayer = (e: L.LeafletEvent) => {
+    const layer = (e as L.LeafletEvent & { layer: L.Path }).layer
+    if (!layer?.setStyle) return
+    const c = (layer.options.color as string) ?? '#3388ff'
+    selectedRef.current = layer
+    colorRef.current = c
+    setHasSelection(true)
+    setColor(c)
+  }
+
+  const changeColor = (value: string) => {
+    colorRef.current = value
+    setColor(value)
+    const layer = selectedRef.current as (L.Path & { feature?: Feature }) | null
+    if (!layer) return
+
+    layer.setStyle({ color: value })
+    layer.feature = {
+      type: 'Feature',
+      properties: { ...(layer.feature?.properties ?? {}), color: value },
+      geometry: undefined as never,
+    }
+    sync()
+  }
+
+  // novos polígonos nascem com a última cor escolhida
+  const handleCreated = (e: L.LeafletEvent) => {
+    const layer = (e as L.LeafletEvent & { layer: L.Path & { feature?: Feature } }).layer
+    layer.setStyle?.({ color: colorRef.current })
+    layer.feature = {
+      type: 'Feature',
+      properties: { color: colorRef.current },
+      geometry: undefined as never,
+    }
+    sync()
+  }
 
   const sync = () => {
     const layers = groupRef.current?.getLayers() ?? []
     setPolygons(layers.map((l) => (l as L.Polygon).toGeoJSON() as Feature))
-  }
-
-  const clearMap = () => {
-    if (!window.confirm('Remover todos os polígonos do mapa?')) return
-    groupRef.current?.clearLayers()
-    sync()
   }
 
   const addPolygons = (features: Feature[]) => {
@@ -126,10 +221,10 @@ export default function MapView() {
     const map = mapRef.current
     if (!group || features.length === 0) return
 
-    // Cada feature vira uma layer dentro do FeatureGroup editável,
-    // então os importados também podem ser editados/removidos no mapa.
     features.forEach((feature) => {
-      L.geoJSON(feature).eachLayer((layer) => group.addLayer(layer))
+      L.geoJSON(feature, {
+        style: (f) => ({ color: (f?.properties?.color as string) ?? '#3388ff' }),
+      }).eachLayer((layer) => group.addLayer(layer))
     })
 
     sync()
@@ -144,8 +239,8 @@ export default function MapView() {
     <div className="relative h-full w-full">
       <MapContainer
         ref={mapRef}
-        center={[-21.25, -45.0]}
-        zoom={13}
+        center={[-14.2350, -51.9253]}
+        zoom={5}
         className="h-full w-full"
       >
         <TileLayer
@@ -155,16 +250,19 @@ export default function MapView() {
         <CitiesLayer />
         <MapActions
           onImport={() => setImportOpen(true)}
-          onExport={() => setExportOpen(true)}
-          onClear={clearMap}
+          onExport={startExport}
           empty={polygons.length === 0}
         />
-        <FeatureGroup ref={groupRef}>
+        <FeatureGroup ref={groupRef} eventHandlers={{ click: handleGroupClick }}>
           <EditControl
-            position="topright"
-            onCreated={sync}
+            position="topleft"
+            onCreated={handleCreated}
             onEdited={sync}
-            onDeleted={sync}
+            onDeleted={() => {
+              selectedRef.current = null
+              setHasSelection(false)
+              sync()
+            }}
             draw={{
               polygon: { allowIntersection: false, showArea: false },
               rectangle: false, polyline: false, circle: false,
@@ -172,7 +270,44 @@ export default function MapView() {
             }}
           />
         </FeatureGroup>
+        <ColorButton
+          color={color}
+          disabled={!hasSelection}
+          onChange={changeColor}
+        />
       </MapContainer>
+
+      {exportMode && (
+        <div className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-md bg-white px-3 py-2 shadow-md">
+          <span className="text-sm text-gray-700">
+            {exportCount === 0
+              ? 'Clique nos polígonos para selecionar'
+              : `${exportCount} selecionado${exportCount > 1 ? 's' : ''}`}
+          </span>
+          <button
+            type="button"
+            onClick={toggleAllExport}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            onClick={cancelExport}
+            className="rounded px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={confirmExport}
+            disabled={exportCount === 0}
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            Exportar
+          </button>
+        </div>
+      )}
 
       <ImportModal
         open={importOpen}
@@ -182,7 +317,7 @@ export default function MapView() {
 
       <ExportModal
         open={exportOpen}
-        features={polygons}
+        features={toExport}
         onClose={() => setExportOpen(false)}
       />
     </div>
