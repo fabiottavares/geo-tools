@@ -8,13 +8,10 @@ export function toFeatureCollection(features: Feature[]): FeatureCollection {
   return { type: 'FeatureCollection', features }
 }
 
-/* ---------- WKT ---------- */
-
 const pos = (p: Position) => `${p[0]} ${p[1]}`
 const ring = (r: Position[]) => `(${r.map(pos).join(', ')})`
 const rings = (rs: Position[][]) => `(${rs.map(ring).join(', ')})`
 
-// Converte uma geometria GeoJSON em WKT (coordenadas em x=lng, y=lat)
 export function geometryToWkt(g: Feature['geometry']): string {
   switch (g.type) {
     case 'Point':
@@ -30,17 +27,13 @@ export function geometryToWkt(g: Feature['geometry']): string {
   }
 }
 
-// Um WKT por linha, um para cada feature
 export function toWkt(features: Feature[]): string {
   return features.map((f) => geometryToWkt(f.geometry)).join('\n')
 }
 
-/* ---------- KML / KMZ ---------- */
-
 const escapeXml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// KML usa "lng,lat,altitude", separados por espaço
 const kmlCoords = (r: Position[]) => r.map((p) => `${p[0]},${p[1]},0`).join(' ')
 
 const kmlPolygon = (rs: Position[][]) => {
@@ -89,7 +82,6 @@ export function toKml(features: Feature[]): string {
     })
     .join('\n')
 
-  // Cores do KML são aabbggrr (aqui: azul #2563eb)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -104,14 +96,10 @@ ${placemarks}
 `
 }
 
-// KMZ = ZIP com o KML na raiz, chamado doc.kml
 export function toKmz(features: Feature[]): Uint8Array {
   return zipSync({ 'doc.kml': strToU8(toKml(features)) }, { level: 6 })
 }
 
-/* ---------- MultiPolygon ---------- */
-
-// Une todos os polígonos em uma única feição MultiPolygon (cada um vira uma parte)
 export function mergeToMultiPolygon(features: Feature[]): Feature<MultiPolygon> {
   const parts: Position[][][] = []
   for (const { geometry: g } of features) {
@@ -125,13 +113,9 @@ export function mergeToMultiPolygon(features: Feature[]): Feature<MultiPolygon> 
   }
 }
 
-// Mais de um polígono desenhado => exporta como um único MultiPolygon
 export const isMultiExport = (features: Feature[]) => features.length > 1
-// Nome-base dos arquivos exportados
 export const baseName = (features: Feature[]) =>
   isMultiExport(features) ? 'multipoligono' : 'poligonos'
-
-/* ---------- Saída ---------- */
 
 export const FORMATS: Record<
   ExportFormat,
@@ -175,9 +159,7 @@ export const FORMATS: Record<
 }
 
 export type ExportFile = {
-  /** Texto exibido na pré-visualização (no KMZ, é o doc.kml de dentro do ZIP) */
   text: string
-  /** Arquivo que será baixado */
   blob: Blob
 }
 
@@ -200,7 +182,6 @@ export function buildFile(format: ExportFormat, features: Feature[]): ExportFile
     }
     case 'kmz': {
       const zip = toKmz(list)
-      // cópia em ArrayBuffer comum, exigida pelo tipo BlobPart
       const buffer = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer
       return { text: toKml(list), blob: new Blob([buffer], { type: mime }) }
     }
@@ -212,7 +193,6 @@ export function buildFile(format: ExportFormat, features: Feature[]): ExportFile
   }
 }
 
-// Conta os vértices (sem repetir o ponto que fecha cada anel)
 export function countVertices(features: Feature[]): number {
   const ringCount = (r: Position[]) => Math.max(r.length - 1, 0)
   return features.reduce((total, { geometry: g }) => {

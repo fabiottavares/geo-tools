@@ -1,32 +1,20 @@
 import type { Feature, Position } from 'geojson'
 import { strToU8, zipSync } from 'fflate'
 
-/**
- * Gera um Shapefile (ZIP) de polígonos, direto no navegador.
- * Arquivos: .shp (geometrias), .shx (índice), .dbf (atributos),
- *           .prj (WGS 84) e .cpg (UTF-8).
- */
-
 const SHAPE_POLYGON = 5
 
-// WGS 84 (EPSG:4326), no formato WKT do ESRI usado em arquivos .prj
 const PRJ_WGS84 =
   'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],' +
   'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
 
 const LABEL: Record<string, string> = { Polygon: 'Polígono', MultiPolygon: 'MultiPolygon' }
 
-/* ---------- Geometria ---------- */
-
-// > 0 = anti-horário, < 0 = horário
 const signedArea = (r: Position[]) => {
   let a = 0
   for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]
   return a / 2
 }
 
-// Shapefile: anel externo HORÁRIO e buracos ANTI-HORÁRIOS (o oposto do GeoJSON).
-// Leitores como o GDAL/QGIS usam essa orientação para separar externo de buraco.
 const orient = (ring: Position[], clockwise: boolean) =>
   signedArea(ring) < 0 === clockwise ? ring : [...ring].reverse()
 
@@ -49,12 +37,10 @@ function bboxOf(points: Position[]): [number, number, number, number] {
   return [xmin, ymin, xmax, ymax]
 }
 
-/* ---------- .shp e .shx ---------- */
-
 function writeHeader(view: DataView, fileBytes: number, bbox: number[]) {
-  view.setInt32(0, 9994, false) // código do arquivo (big-endian)
-  view.setInt32(24, fileBytes / 2, false) // tamanho em palavras de 16 bits
-  view.setInt32(28, 1000, true) // versão
+  view.setInt32(0, 9994, false)
+  view.setInt32(24, fileBytes / 2, false)
+  view.setInt32(28, 1000, true)
   view.setInt32(32, SHAPE_POLYGON, true)
   bbox.forEach((v, i) => view.setFloat64(36 + i * 8, v, true))
 }
@@ -77,7 +63,7 @@ function buildShpShx(records: Position[][][]) {
     const length = contentBytes(rings)
     const points = rings.flat()
 
-    shp.setInt32(offset, i + 1, false) // nº do registro (começa em 1)
+    shp.setInt32(offset, i + 1, false)
     shp.setInt32(offset + 4, length / 2, false)
     shx.setInt32(100 + i * 8, offset / 2, false)
     shx.setInt32(100 + i * 8 + 4, length / 2, false)
@@ -109,8 +95,6 @@ function buildShpShx(records: Position[][][]) {
   return { shp: new Uint8Array(shp.buffer), shx: new Uint8Array(shx.buffer) }
 }
 
-/* ---------- .dbf (dBASE III) ---------- */
-
 const ID_LEN = 10
 const NAME_LEN = 80
 
@@ -137,25 +121,22 @@ function buildDbf(names: string[]): Uint8Array {
   }
   field(0, 'ID', 'N', ID_LEN)
   field(1, 'NOME', 'C', NAME_LEN)
-  buf[headerLen - 1] = 0x0d // fim dos descritores
+  buf[headerLen - 1] = 0x0d
 
   names.forEach((name, i) => {
     let p = headerLen + i * recordLen
-    buf[p++] = 0x20 // registro ativo
+    buf[p++] = 0x20
     buf.set(strToU8(String(i + 1).padStart(ID_LEN, ' ')), p)
     p += ID_LEN
     buf.fill(0x20, p, p + NAME_LEN)
     buf.set(strToU8(name).slice(0, NAME_LEN), p)
   })
-  buf[buf.length - 1] = 0x1a // fim do arquivo
+  buf[buf.length - 1] = 0x1a
   return buf
 }
 
-/* ---------- ZIP ---------- */
-
 export type ShapefileResult = {
   zip: Uint8Array
-  /** Resumo legível do conteúdo do ZIP, para a pré-visualização */
   summary: string
 }
 
