@@ -12,7 +12,6 @@ import {
 type Props = {
   open: boolean
   onClose: () => void
-  /** Recebe os polígonos já normalizados (MultiPolygon é dividido em partes) */
   onImport: (features: Feature[]) => void
 }
 
@@ -45,14 +44,13 @@ export default function ImportModal({ open, onClose, onImport }: Props) {
   const [text, setText] = useState('')
   const [dragging, setDragging] = useState(false)
 
-  // <dialog> nativo: foco preso, Esc e camada superior de graça
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
     if (!open && dialog.open) dialog.close()
     if (!open) {
-      requestRef.current++ // descarta leituras em andamento
+      requestRef.current++
       setMode('file')
       setFileState({ status: 'idle' })
       setText('')
@@ -60,7 +58,6 @@ export default function ImportModal({ open, onClose, onImport }: Props) {
     }
   }, [open])
 
-  // Texto colado é interpretado ao vivo (adiado para não travar com textos grandes)
   const deferredText = useDeferredValue(text)
   const textState = useMemo<TextState>(() => {
     if (!deferredText.trim()) return { status: 'idle' }
@@ -90,10 +87,9 @@ export default function ImportModal({ open, onClose, onImport }: Props) {
         message: err instanceof Error ? err.message : 'Não foi possível ler o arquivo.',
       })
     }
-    if (inputRef.current) inputRef.current.value = '' // permite reenviar o mesmo arquivo
+    if (inputRef.current) inputRef.current.value = ''
   }
 
-  // Resultado pronto da aba ativa
   const summary = useMemo(() => {
     if (mode === 'file' && fileState.status === 'ready') {
       return { name: fileState.name, size: fileState.size, result: fileState.result }
@@ -244,7 +240,6 @@ export default function ImportModal({ open, onClose, onImport }: Props) {
           </div>
         )}
 
-        {/* Resumo */}
         {summary && (
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
             <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500">
@@ -273,7 +268,6 @@ export default function ImportModal({ open, onClose, onImport }: Props) {
           </div>
         )}
 
-        {/* Ações */}
         <footer className="flex justify-end gap-2">
           <button
             onClick={onClose}

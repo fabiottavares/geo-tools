@@ -23,7 +23,6 @@ export default function ExportModal({ open, features, onClose }: Props) {
   const [format, setFormat] = useState<ExportFormat>('geojson')
   const [copied, setCopied] = useState(false)
 
-  // <dialog> nativo: foco preso, Esc e camada superior de graça
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return

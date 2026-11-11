@@ -74,7 +74,6 @@ function collectGeometry(
       } else stats.skipped++
       break
     case 'MultiPolygon':
-      // cada parte vira um polígono independente no mapa
       for (const coordinates of geom.coordinates) {
         if (isValidPolygon(coordinates)) {
           stats.polygons.push({
@@ -102,7 +101,7 @@ function collect(input: unknown, stats: Stats) {
   const obj = input as { type?: string }
 
   if (obj.type === 'FeatureCollection') {
-    ;(obj as { features: Feature[] }).features.forEach((f) => collect(f, stats))
+    ; (obj as { features: Feature[] }).features.forEach((f) => collect(f, stats))
   } else if (obj.type === 'Feature') {
     const f = obj as Feature
     collectGeometry(f.geometry, f.properties ?? {}, stats)
@@ -110,10 +109,6 @@ function collect(input: unknown, stats: Stats) {
     collectGeometry(obj as Geometry, {}, stats)
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* Parsers por formato                                                 */
-/* ------------------------------------------------------------------ */
 
 function parseKmlText(text: string) {
   const dom = new DOMParser().parseFromString(text, 'text/xml')
@@ -135,7 +130,6 @@ async function parseKmz(buffer: ArrayBuffer) {
 function parseWktText(text: string) {
   const clean = (s: string) => s.replace(/^\s*SRID=\d+;/i, '').trim()
 
-  // tenta o texto inteiro; se falhar, uma geometria por linha
   const whole = parseWkt(clean(text))
   if (whole) return [whole]
 
@@ -147,10 +141,6 @@ function parseWktText(text: string) {
   if (!geoms.length || geoms.some((g) => !g)) throw new Error('WKT inválido.')
   return geoms
 }
-
-/* ------------------------------------------------------------------ */
-/* API pública                                                         */
-/* ------------------------------------------------------------------ */
 
 export async function parseFile(file: File): Promise<ImportResult> {
   const format = detectFormat(file.name)

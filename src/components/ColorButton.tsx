@@ -48,7 +48,6 @@ export default function ColorButton({
     }
   }, [map])
 
-  // Título e estado desabilitado
   useEffect(() => {
     if (!host) return
     const label = disabled ? 'Selecione um polígono para mudar a cor' : 'Cor da linha'
